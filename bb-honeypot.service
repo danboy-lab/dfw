@@ -1,0 +1,10 @@
+[Unit]
+Description=Bug bounty - local canary (loopback)
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/Documents/bugbounty/dfw/honeypot.py
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
