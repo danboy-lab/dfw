@@ -206,7 +206,8 @@ verify() {
 rollback() {
   need_root
   local latest
-  latest="$(ls -1dt "${BACKUP_ROOT}"/* 2>/dev/null | head -1 || true)"
+  latest="$(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null \
+    | sort -rn | head -1 | cut -d' ' -f2- || true)"
   [[ -n "$latest" ]] || die "nenhum backup em $BACKUP_ROOT"
 
   log "restaurando $latest"
