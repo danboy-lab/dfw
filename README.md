@@ -128,8 +128,3 @@ CI (`.github/workflows/ci.yml`) runs on pushes and pull requests:
 - https://www.spamhaus.org/drop/
 - https://lists.blocklist.de/
 - https://github.com/stamparm/ipsum
-
-## Security
-
-This repository is public and contains no credentials, tokens, personal paths
-or target data. Never add secrets here; keep them in a password manager.
