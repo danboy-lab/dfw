@@ -211,8 +211,12 @@ rollback() {
 
   log "restaurando $latest"
   ufw --force reset
-  [[ -f "$latest/default-ufw" ]] && cp -a "$latest/default-ufw" /etc/default/ufw
-  [[ -d "$latest/ufw-dir" ]] && cp -a "$latest/ufw-dir/." /etc/ufw/
+  if [[ -f "$latest/default-ufw" ]]; then
+    cp -a "$latest/default-ufw" /etc/default/ufw
+  fi
+  if [[ -d "$latest/ufw-dir" ]]; then
+    cp -a "$latest/ufw-dir/." /etc/ufw/
+  fi
   if [[ -f "$latest/ipset.txt" ]]; then
     ipset restore -file "$latest/ipset.txt" -exist 2>/dev/null || true
   fi
@@ -246,8 +250,8 @@ if [[ "$DO_BASELINE" -eq 0 && "$DO_BLOCKLISTS" -eq 0 && "$DO_VERIFY" -eq 0 \
   exit 0
 fi
 
-[[ "$DO_INSTALL_DEPS" -eq 1 ]] && install_deps
-[[ "$DO_BASELINE" -eq 1 ]] && apply_baseline
-[[ "$DO_BLOCKLISTS" -eq 1 ]] && install_blocklists
-[[ "$DO_ROLLBACK" -eq 1 ]] && rollback
-[[ "$DO_VERIFY" -eq 1 ]] && verify
+if [[ "$DO_INSTALL_DEPS" -eq 1 ]]; then install_deps; fi
+if [[ "$DO_BASELINE" -eq 1 ]]; then apply_baseline; fi
+if [[ "$DO_BLOCKLISTS" -eq 1 ]]; then install_blocklists; fi
+if [[ "$DO_ROLLBACK" -eq 1 ]]; then rollback; fi
+if [[ "$DO_VERIFY" -eq 1 ]]; then verify; fi
