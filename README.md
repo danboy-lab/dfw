@@ -3,11 +3,11 @@
 [![CI](https://github.com/danboy-lab/dfw/actions/workflows/ci.yml/badge.svg)](https://github.com/danboy-lab/dfw/actions/workflows/ci.yml)
 
 **Hardened `ufw` profile for bug-bounty laptops.** Outbound-only by default,
-silent DROPs ("shadowblocks"), public abuse blocklists loaded into `ipset`,
+silent DROPs for listed hosts, public abuse blocklists loaded into `ipset`,
 and a loopback-only canary for local connection detection.
 
-> Run this on the local machine, **not over SSH**. The baseline step resets the
-> current firewall rules. A rollback is always available.
+> Execution is intended on the local machine, **not over SSH**. The baseline
+> step resets the current firewall rules. A rollback is always available.
 
 ## Features
 
@@ -22,12 +22,12 @@ and a loopback-only canary for local connection detection.
 - Installs `bb-ipset.service` so the set is restored before `ufw` at boot.
 - `honeypot.py` listens only on `127.0.0.1:8088` and logs local connections.
 
-## What "shadowblock" means
+## Shadowsocks
 
-A shadowblock is a silent drop: the packet is discarded without a REJECT or
-ICMP response, so a scanner gets no answer. This is implemented by the default
-`deny incoming` policy plus the `ipset ... -j DROP` rules. It is a technique,
-not an external product.
+Shadowsocks is an outbound-only proxy. The local SOCKS5 listener should bind to
+loopback (for example `127.0.0.1:8388`) and the client connects to the remote
+server through the allowed outgoing traffic. No inbound `ufw` rule is needed,
+and the local proxy port must not be exposed to the network.
 
 ## Requirements
 
@@ -119,7 +119,7 @@ CI (`.github/workflows/ci.yml`) runs on pushes and pull requests:
 - False positives happen: remove one with `sudo ipset del bb-blocklist <IP/CIDR>`.
 - Use `sudo ufw logging medium` temporarily for investigation, then return to `low`.
 - The script does not touch Docker/ufw-docker or VPNs with inbound tunnels
-  (Tailscale, WireGuard). Add explicit rules there if you use them.
+  (Tailscale, WireGuard). Add explicit rules there when those tunnels are in use.
 - List downloads require outbound HTTPS; if a source fails, the script warns and
   continues with the remaining sources.
 
