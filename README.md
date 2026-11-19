@@ -98,7 +98,9 @@ The decoy answers with simple SSH, Telnet and HTTP banners and appends every
 source address and payload to `~/Documents/bugbounty/honeypot/connections.log`.
 
 Port 8080 may conflict with a local proxy such as Burp. The script warns when a
-port is already bound; the decoy keeps listening on the remaining ports.
+port is already bound; the decoy keeps listening on the remaining ports. The
+service runs as the invoking user with `CAP_NET_BIND_SERVICE` so ports 22 and 23
+can be bound without running the decoy as root.
 
 The log path can be overridden with `BB_HONEYPOT_LOG`.
 
@@ -113,6 +115,8 @@ sudo python3 dashboard.py
 ```
 
 Root privileges are expected so the monitor can read firewall and `ipset` state.
+When launched with `sudo`, the log path is resolved from `SUDO_USER`, so hits
+written by the decoy are displayed correctly.
 
 ## Tests
 

@@ -3,17 +3,27 @@
 
 import curses
 import os
+import pwd
 import subprocess
 import time
 from pathlib import Path
 
-LOG = Path(
-    os.environ.get(
-        "BB_HONEYPOT_LOG",
-        str(Path.home() / "Documents" / "bugbounty" / "honeypot" / "connections.log"),
-    )
-)
 REFRESH_SECONDS = 2
+
+
+def default_log_path() -> Path:
+    """Use the invoking user's home even when the monitor runs under sudo."""
+    user = os.environ.get("SUDO_USER")
+    if user:
+        try:
+            home = Path(pwd.getpwnam(user).pw_dir)
+            return home / "Documents" / "bugbounty" / "honeypot" / "connections.log"
+        except KeyError:
+            pass
+    return Path.home() / "Documents" / "bugbounty" / "honeypot" / "connections.log"
+
+
+LOG = Path(os.environ.get("BB_HONEYPOT_LOG", str(default_log_path())))
 
 
 def run_cmd(argv: list[str]) -> list[str]:

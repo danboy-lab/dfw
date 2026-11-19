@@ -1,9 +1,11 @@
 """Unit tests for dashboard helpers. curses is never initialized."""
 
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -44,6 +46,19 @@ class DashboardTests(unittest.TestCase):
     def test_load_hits_missing_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(dashboard.load_hits(Path(tmp) / "missing.log"), [])
+
+    def test_default_log_path_uses_sudo_user_home(self) -> None:
+        class FakeUser:
+            pw_dir = "/home/operator"
+
+        with mock.patch.dict(os.environ, {"SUDO_USER": "operator"}), mock.patch(
+            "dashboard.pwd.getpwnam", return_value=FakeUser()
+        ):
+            path = dashboard.default_log_path()
+        self.assertEqual(
+            path,
+            Path("/home/operator/Documents/bugbounty/honeypot/connections.log"),
+        )
 
 
 if __name__ == "__main__":

@@ -264,6 +264,8 @@ After=network.target
 [Service]
 Type=simple
 User=${user}
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 Environment=BB_HONEYPOT_LOG=${log_path}
 ExecStart=/usr/bin/python3 ${SCRIPT_DIR}/honeypot.py
 Restart=on-failure
