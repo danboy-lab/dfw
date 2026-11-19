@@ -9,6 +9,7 @@
 set -euo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 MARK_BEGIN="# BB-BLOCKLIST-BEGIN"
 MARK_END="# BB-BLOCKLIST-END"
 IPSET_SET="bb-blocklist"
@@ -20,7 +21,10 @@ DO_BLOCKLISTS=0
 DO_INSTALL_DEPS=0
 DO_VERIFY=0
 DO_ROLLBACK=0
+DO_HONEYPOT=0
+DO_DASHBOARD=0
 BACKUP_DIR=""
+HONEYPOT_PORTS=(22 23 80 8080)
 
 # Public abuse/drop lists. Private, reserved, documentation and LAN ranges are
 # filtered out before loading so local DNS/LAN traffic keeps working.
@@ -35,12 +39,14 @@ usage() {
   cat <<EOF
 Uso: sudo bash $SCRIPT_NAME [opcoes]
 
-Perfil: default deny incoming / allow outgoing / deny routed (sem excecoes de entrada).
+Perfil: default deny incoming / allow outgoing / deny routed.
 
 Opcoes:
   --baseline      aplica o baseline ufw (faz backup e reset das regras atuais)
   --blocklists    baixa listas publicas, carrega no ipset e adiciona regras DROP
   --all           baseline + blocklists
+  --honeypot      abre 22,23,80,8080/tcp para qualquer origem e sobe o decoy
+  --dashboard     abre o monitor TUI no final da execucao
   --verify        mostra ufw, ipset, listeners e teste de saida
   --rollback      restaura o backup mais recente
   --install-deps  instala ipset e curl via pacman (Arch)
@@ -48,6 +54,7 @@ Opcoes:
   -h, --help      esta ajuda
 
 Recomendado: sudo bash $SCRIPT_NAME --all
+Com decoy e monitor: sudo bash $SCRIPT_NAME --all --honeypot --dashboard
 EOF
 }
 
@@ -230,11 +237,63 @@ rollback() {
   ufw status verbose
 }
 
+install_honeypot() {
+  need_root
+  local user="${SUDO_USER:-$(id -un)}"
+  local home
+  home="$(getent passwd "$user" 2>/dev/null | cut -d: -f6 || printf '%s' "$HOME")"
+
+  log "AVISO: abrindo portas ${HONEYPOT_PORTS[*]}/tcp para qualquer origem"
+  local port
+  for port in "${HONEYPOT_PORTS[@]}"; do
+    if ss -lnt 2>/dev/null | grep -q ":${port} "; then
+      log "AVISO: porta $port ja em uso; o decoy pode falhar ao escutar"
+    fi
+    ufw allow "${port}/tcp" comment 'dfw honeypot'
+  done
+
+  local log_path="${home}/Documents/bugbounty/honeypot/connections.log"
+  mkdir -p "$(dirname "$log_path")"
+  chown -R "$user" "$(dirname "$log_path")"
+
+  cat > /etc/systemd/system/dfw-honeypot.service <<EOF
+[Unit]
+Description=dfw internet honeypot (22,23,80,8080)
+After=network.target
+
+[Service]
+Type=simple
+User=${user}
+Environment=BB_HONEYPOT_LOG=${log_path}
+ExecStart=/usr/bin/python3 ${SCRIPT_DIR}/honeypot.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable --now dfw-honeypot.service >/dev/null 2>&1 || true
+  ufw reload
+  log "honeypot ativo em 0.0.0.0:${HONEYPOT_PORTS[*]}"
+  log "log: $log_path"
+}
+
+open_dashboard() {
+  if [[ ! -t 0 ]]; then
+    log "sem TTY; rode: sudo python3 $SCRIPT_DIR/dashboard.py"
+    return 0
+  fi
+  python3 "$SCRIPT_DIR/dashboard.py"
+}
+
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --baseline) DO_BASELINE=1 ;;
     --blocklists) DO_BLOCKLISTS=1 ;;
     --all) DO_BASELINE=1; DO_BLOCKLISTS=1 ;;
+    --honeypot) DO_HONEYPOT=1 ;;
+    --dashboard) DO_DASHBOARD=1 ;;
     --verify) DO_VERIFY=1 ;;
     --rollback) DO_ROLLBACK=1 ;;
     --install-deps) DO_INSTALL_DEPS=1 ;;
@@ -246,7 +305,8 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 if [[ "$DO_BASELINE" -eq 0 && "$DO_BLOCKLISTS" -eq 0 && "$DO_VERIFY" -eq 0 \
-      && "$DO_ROLLBACK" -eq 0 && "$DO_INSTALL_DEPS" -eq 0 ]]; then
+      && "$DO_ROLLBACK" -eq 0 && "$DO_INSTALL_DEPS" -eq 0 \
+      && "$DO_HONEYPOT" -eq 0 && "$DO_DASHBOARD" -eq 0 ]]; then
   usage
   exit 0
 fi
@@ -254,5 +314,7 @@ fi
 if [[ "$DO_INSTALL_DEPS" -eq 1 ]]; then install_deps; fi
 if [[ "$DO_BASELINE" -eq 1 ]]; then apply_baseline; fi
 if [[ "$DO_BLOCKLISTS" -eq 1 ]]; then install_blocklists; fi
+if [[ "$DO_HONEYPOT" -eq 1 ]]; then install_honeypot; fi
 if [[ "$DO_ROLLBACK" -eq 1 ]]; then rollback; fi
 if [[ "$DO_VERIFY" -eq 1 ]]; then verify; fi
+if [[ "$DO_DASHBOARD" -eq 1 ]]; then open_dashboard; fi

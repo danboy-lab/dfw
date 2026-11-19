@@ -4,7 +4,7 @@
 
 **Hardened `ufw` profile for bug-bounty laptops.** Outbound-only by default,
 silent DROPs for listed hosts, public abuse blocklists loaded into `ipset`,
-and a loopback-only canary for local connection detection.
+an opt-in internet honeypot, and a terminal dashboard for live monitoring.
 
 > Execution is intended on the local machine, **not over SSH**. The baseline
 > step resets the current firewall rules. A rollback is always available.
@@ -20,7 +20,10 @@ and a loopback-only canary for local connection detection.
   - `ufw-before-input` → `DROP` for listed source IPs (no REJECT/ICMP reply);
   - `ufw-before-output` → `DROP` for listed destination IPs.
 - Installs `bb-ipset.service` so the set is restored before `ufw` at boot.
-- `honeypot.py` listens only on `127.0.0.1:8088` and logs local connections.
+- Optional `--honeypot` opens `22,23,80,8080/tcp` and starts a decoy that logs
+  source addresses and payloads.
+- Optional `--dashboard` renders a curses monitor with firewall state, set size,
+  established connections and recent honeypot hits.
 
 ## Shadowsocks
 
@@ -55,6 +58,12 @@ Default:                  deny (incoming), allow (outgoing), deny (routed)
 The verify step also prints the first lines of the `ipset`, any non-loopback
 listeners, and an outbound connectivity check.
 
+To apply the profile together with the internet decoy and open the monitor:
+
+```bash
+sudo bash ufw-hardened.sh --all --honeypot --dashboard
+```
+
 ## Options
 
 | Option | Effect |
@@ -62,6 +71,8 @@ listeners, and an outbound connectivity check.
 | `--baseline` | Back up, reset, and apply the default policies. |
 | `--blocklists` | Download lists, load `ipset`, insert DROP rules, install the restore service. |
 | `--all` | Baseline + blocklists. |
+| `--honeypot` | Open `22,23,80,8080/tcp` to any source and start the decoy service. |
+| `--dashboard` | Open the curses monitor after the selected actions finish. |
 | `--verify` | Show firewall state, set contents, listeners and outbound check. |
 | `--rollback` | Restore the most recent backup. |
 | `--install-deps` | Install `ipset` and `curl` via `pacman`. |
@@ -79,23 +90,29 @@ sudo bash ufw-hardened.sh --rollback
 
 The original `ufw` state is preserved, including whether it was inactive.
 
-## Local canary
+## Internet honeypot
 
-An external honeypot would require an inbound rule, which conflicts with the
-hardened profile. This canary is therefore local-only: it detects an internal
-process making an unexpected connection to port 8088.
+`--honeypot` is an explicit deviation from the default deny-incoming profile:
+it opens `22,23,80,8080/tcp` to any source and starts `dfw-honeypot.service`.
+The decoy answers with simple SSH, Telnet and HTTP banners and appends every
+source address and payload to `~/Documents/bugbounty/honeypot/connections.log`.
+
+Port 8080 may conflict with a local proxy such as Burp. The script warns when a
+port is already bound; the decoy keeps listening on the remaining ports.
+
+The log path can be overridden with `BB_HONEYPOT_LOG`.
+
+## Dashboard
+
+`--dashboard` starts a curses monitor after the other actions. It shows `ufw`
+status, the blocklist member count, established connections and the latest
+honeypot hits. Quit with `q`. It can also be started directly:
 
 ```bash
-mkdir -p ~/.config/systemd/user
-cp bb-honeypot.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now bb-honeypot.service
-
-python3 -c "import socket; socket.create_connection(('127.0.0.1', 8088), 1).close()"
-tail -1 ~/Documents/bugbounty/honeypot/connections.log
+sudo python3 dashboard.py
 ```
 
-The log path can be overridden with the `BB_HONEYPOT_LOG` environment variable.
+Root privileges are expected so the monitor can read firewall and `ipset` state.
 
 ## Tests
 
@@ -109,13 +126,17 @@ python -m unittest discover -s tests -p 'test_*.py' -v
 CI (`.github/workflows/ci.yml`) runs on pushes and pull requests:
 
 - **Shell job:** `bash -n`, `shellcheck`, and the shell test suite.
-- **Python job:** `unittest` on Python 3.10, 3.11 and 3.12.
+- **Python job:** `unittest` on Python 3.10, 3.11 and 3.12 for the honeypot and
+  dashboard helpers.
 - Both jobs run on `ubuntu-latest` and require no network calls to external
   targets beyond package installation.
 
 ## Limitations
 
 - A blocklist is defense in depth, not a replacement for `deny incoming`.
+- `--honeypot` intentionally opens inbound ports and is not part of `--all`.
+- A port already bound by another service is reported in the honeypot log; the
+  decoy keeps listening on the remaining ports.
 - False positives happen: remove one with `sudo ipset del bb-blocklist <IP/CIDR>`.
 - Use `sudo ufw logging medium` temporarily for investigation, then return to `low`.
 - The script does not touch Docker/ufw-docker or VPNs with inbound tunnels

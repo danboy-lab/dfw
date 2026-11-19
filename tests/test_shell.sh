@@ -10,6 +10,8 @@ bash -n ufw-hardened.sh
 echo "== help output =="
 help="$(bash ufw-hardened.sh --help)"
 grep -q -- '--all' <<<"$help"
+grep -q -- '--honeypot' <<<"$help"
+grep -q -- '--dashboard' <<<"$help"
 grep -q -- '--rollback' <<<"$help"
 grep -q -- 'deny incoming' <<<"$help"
 
